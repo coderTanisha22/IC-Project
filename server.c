@@ -1,132 +1,263 @@
-//Tic-Tac-Toe
-// server.c
+
+#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdbool.h>
-#include <SDL2/SDL.h>
-#include <sys/socket.h>//socket ke liye files
-#include <netinet/in.h>//ip address family
 #include <unistd.h>
-#include <math.h>
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include<sys/select.h>
 
-#define window_size 600
-#define cell_size (window_size/3)//macros
 #define PORT 8080
+#define cells 8
+#define cell_size 80
+#define window_size (cells * cell_size)
 
-char board[9]={' ',' ',' ',' ',' ',' ',' ',' ',' '};
-int count=0;//moves count
-int status=0;//0-continue,1-X,2-O,3-draw
-bool meri=true;//server-X,client-O
+enum { khali, RED, BLACK, RED_K, BLACK_K };
 
-int checkingforwin(){
-    int combis[8][3]={{0,1,2},{3,4,5},{6,7,8},{0,3,6},{1,4,7},{2,5,8},{0,4,8},{2,4,6}};//all combis for win
-    for(int i=0; i<8; i++){
-        if(board[combis[i][0]]==board[combis[i][1]]&&board[combis[i][1]] == board[combis[i][2]] &&board[combis[i][0]] != ' ') {
-            return(board[combis[i][0]]=='X') ? 1:2;
-        }
-    }
-    return(count==9) ? 3:0;
-}
-
-void drawboard(SDL_Renderer* renderer){
-    SDL_SetRenderDrawColor(renderer,0,0,0,255);
-    for (int i=1; i<3; i++){
-        SDL_RenderDrawLine(renderer, i*cell_size, 0, i*cell_size, window_size);
-        SDL_RenderDrawLine(renderer, 0, i*cell_size, window_size, i*cell_size);
-    }
-    for(int i=0; i<9; i++){
-        int row= i/3, col =i%3;
-        int x= col*cell_size + cell_size/2;
-        int y= row*cell_size + cell_size/2;
-
-        if(board[i]== 'X'){
-            SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
-            SDL_RenderDrawLine(renderer, x-40, y-40, x+40, y+40);
-            SDL_RenderDrawLine(renderer, x+40, y-40, x-40, y+40);
-        } 
-        else if(board[i]== 'O'){
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-            for (int angle=0; angle<=360; angle++) {
-                float x1=x+40*cos(angle * M_PI / 180.0);
-                float y1=y+40*sin(angle * M_PI / 180.0);
-                SDL_RenderDrawPoint(renderer, (int)x1, (int)y1);
+int board[cells][cells];
+bool redTurn = true; // Red = client, Black = server used to define whose turn it is
+int server_socket = -1, client_socket = -1;
+bool quit = false;
+bool isRed=true;
+//function to draw circle
+void drawCirc(SDL_Renderer* renderer, int cx, int cy, int radius) {
+    for (int w = 0; w < radius * 2; w++) {
+        for (int h = 0; h < radius * 2; h++) {
+            int dx = radius - w;
+            int dy = radius - h;
+            //make a square but only printf if inside circle
+            if ((dx * dx + dy * dy) <= (radius * radius)) {
+                SDL_RenderDrawPoint(renderer, cx + dx, cy + dy);
             }
         }
     }
 }
 
-int main(){
-    int server_fd, client_fd;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t addrlen = sizeof(client_addr);
+void drawBoard(SDL_Renderer* renderer) {
+    for (int row = 0; row < cells; row++) {
+        for (int col = 0; col < cells; col++) {
+            SDL_Rect cell = { col * cell_size, row * cell_size, cell_size, cell_size };
+            if ((row + col) % 2 == 0)
+                SDL_SetRenderDrawColor(renderer, 240, 217, 181, 255);
+                //color for light sqaure
+            else
+                SDL_SetRenderDrawColor(renderer, 181, 136, 99, 255);
+                //color for dark sqaure
+            SDL_RenderFillRect(renderer, &cell);
 
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
-    listen(server_fd, 1);
-    printf("Waiting for client...\n");
-    client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &addrlen);
-    printf("Client connected.\n");
+            int piece = board[row][col];
+            if (piece != khali) {
+                int cx = col * cell_size + cell_size / 2;
+                int cy = row * cell_size + cell_size / 2;
+                int radius = (cell_size / 2) - 10;
+
+                if (piece == RED || piece == RED_K)
+                    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+                    //color for red
+                else
+                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                    //color for black
+
+                drawCirc(renderer, cx, cy, radius);
+
+                if (piece == RED_K || piece == BLACK_K) {
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                    drawCirc(renderer, cx, cy, radius / 2);
+                }
+            }
+        }
+    }
+}
+
+void initialboard() {
+    for (int i = 0; i < cells; i++) {
+        for (int j = 0; j < cells; j++) {
+            if ((i + j) % 2 == 1) {
+                if (i < 3) board[i][j] = BLACK;
+                //till 3 make black
+                else if (i > 4) board[i][j] = RED;
+                // after 4 make red
+                else board[i][j] = khali;
+            } else {
+                board[i][j] = khali;
+            }
+        }
+    }
+}
+
+bool isValidMove(int sr, int sc, int dr, int dc, bool isRed) {
+    if (dr < 0 || dr >= cells || dc < 0 || dc >= cells){
+    return false;
+    }
+    if (board[sr][sc] == khali || board[dr][dc] != khali) {
+        return false;
+    }
+    //check if outside the board or if selected empty
+    int piece = board[sr][sc];
+    int direction = isRed ? -1 : 1;
+
+    // Simple diagonal move
+    if ((piece == RED || piece == BLACK) && dr - sr == direction && abs(dc - sc) == 1) {
+        return true;
+    }
+
+    // condition for king moving downward
+    if ((piece == RED_K || piece == BLACK_K) && abs(dr - sr) == 1 && abs(dc - sc) == 1) {
+        return true;
+    }
+    //check for capturing the piece
+    if (abs(dr - sr) == 2 && abs(dc - sc) == 2) {
+        int midrow = (sr + dr) / 2;
+        int midcol = (sc + dc) / 2;
+        int midPiece = board[midrow][midcol];
+        if (isRed && (midPiece == BLACK || midPiece == BLACK_K)){
+            return true;
+        }
+        if (!isRed && (midPiece == RED || midPiece == RED_K)){
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void makeMove(int sr, int sc, int dr, int dc) {
+    int piece = board[sr][sc];
+    board[dr][dc] = piece;
+    board[sr][sc] = khali;
+
+    // Promotion
+    if (piece == RED && dr == 0){
+        board[dr][dc] = RED_K;
+    }
+    if (piece == BLACK && dr == 7){
+        board[dr][dc] = BLACK_K;
+    }
+    //Capture
+    if (abs(dr - sr) == 2 && abs(dc - sc) == 2) {
+        int midrow = (sr + dr) / 2;
+        int midcol = (sc + dc) / 2;
+        board[midrow][midcol] = khali;
+    }
+    
+    redTurn = !redTurn;
+
+}
+
+void sendMove(int sr, int sc, int dr, int dc, int sock) {
+    char buffer[20];
+    snprintf(buffer, sizeof(buffer), "%d %d %d %d", sr, sc, dr, dc);
+    send(sock, buffer, strlen(buffer), 0);
+    //networking thing :)
+}
+
+bool NoBlock(int* sr, int* sc, int* dr, int* dc, int sock) {
+    fd_set readfds;
+    struct timeval timeout;
+    FD_ZERO(&readfds);
+    FD_SET(sock, &readfds);
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 100000;
+
+    int activity = select(sock + 1, &readfds, NULL, NULL, &timeout);
+
+    if (activity > 0 && FD_ISSET(sock, &readfds)) {
+        char buffer[20] = {0};
+        int valread = read(sock, buffer, sizeof(buffer));
+        if (valread > 0) {
+            sscanf(buffer, "%d %d %d %d", sr, sc, dr, dc);
+            return true;
+        }
+    }
+    return false;
+}
+
+int main() {
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == 0) {
+        perror("Socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    bind(server_socket, (struct sockaddr*)&address, sizeof(address));
+    listen(server_socket, 1);
+    printf("Waiting for a client...\n");
+    client_socket = accept(server_socket, (struct sockaddr*)&address, (socklen_t*)&addrlen);
+    // accepting the request from client
+    if (client_socket < 0) {
+        perror("Accept failed");
+        exit(EXIT_FAILURE);
+    }
+    printf("Client connected!\n");
 
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window* window = SDL_CreateWindow("Tic Tac Toe - Server (X)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_size, window_size, 0);
+    SDL_Window* window = SDL_CreateWindow("Checkers Server - Black", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_size, window_size, 0);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
+    initialboard();
+
+    int selectedRow = -1, selectedCol = -1;
     SDL_Event event;
-    bool running=true;
 
-    while(running){
-        while(SDL_PollEvent(&event)){
-            if(event.type==SDL_QUIT){
-                running=false;
-            }
-            if(event.type==SDL_MOUSEBUTTONDOWN && meri && status==0){
-                int x=event.button.x;
-                int y=event.button.y;
-                int row=y/cell_size, col=x/cell_size;
-                int index =row*3 +col;
+    while (!quit) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
+                quit = true;
+            
+            if (event.type == SDL_MOUSEBUTTONDOWN && !redTurn) {
+                int x = event.button.x;
+                int y = event.button.y;
+                int row = y / cell_size;
+                int col = x / cell_size;
 
-                if(board[index]==' '){
-                    board[index] ='X';
-                    count++;
-                    status=checkingforwin();
-                    meri=false;
-                    char msg[2] ={index + '0', '\0'};
-                    send(client_fd, msg, sizeof(msg), 0);
+                int piece = board[row][col];
+
+                if (selectedRow == -1) {
+                    if ((piece == BLACK || piece == BLACK_K)) {
+                        selectedRow = row;
+                        selectedCol = col;
+                    }
+                } 
+                else {
+                    if (isValidMove(selectedRow, selectedCol, row, col, false)) {
+                        makeMove(selectedRow, selectedCol, row, col);
+                        sendMove(selectedRow, selectedCol, row, col, client_socket);
+                        redTurn = true;
+                    }
+                    selectedRow = -1;
                 }
             }
         }
 
-        if(!meri && status==0){
-            char buffer[2];
-            int val=recv(client_fd, buffer, sizeof(buffer), MSG_DONTWAIT);
-            if(val>0){
-                int index=buffer[0] - '0';
-                if(board[index]==' '){
-                    board[index]='O';
-                    count++;
-                    status=checkingforwin();
-                    meri=true;
-                }
+        if (redTurn) {
+            int sr, sc, dr, dc;
+            if (NoBlock(&sr, &sc, &dr, &dc, client_socket)) {
+                makeMove(sr, sc, dr, dc);
+                redTurn = false;
             }
         }
 
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
-        drawboard(renderer);
+        drawBoard(renderer);
         SDL_RenderPresent(renderer);
+        SDL_Delay(16);
     }
 
-    close(client_fd);
-    close(server_fd);
+    close(client_socket);
+    close(server_socket);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
     return 0;
 }

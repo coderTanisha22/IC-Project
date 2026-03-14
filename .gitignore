@@ -8,6 +8,8 @@
 # Build directory
 build/
 
+old files ignore/
+
 # Object files
 *.obj
 
@@ -26,3 +28,4 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+

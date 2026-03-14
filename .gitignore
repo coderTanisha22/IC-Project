@@ -8,7 +8,7 @@
 # Build directory
 build/
 
-old files ignore/
+old_files_ignore/
 
 # Object files
 *.obj

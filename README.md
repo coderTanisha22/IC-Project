@@ -253,7 +253,7 @@ Open another terminal and run:
 
 The server assigns one player as **Red** and the other as **Black**.
 
-Two game windows will appear.
+Two game windows will appear, one for each player. Move one window to the side to view the other window behind it.
 
 ---
 

@@ -221,7 +221,7 @@ int main() {
                     if (isValidMove(selectedRow, selectedCol, row, col, true)) {
                         makeMove(selectedRow, selectedCol, row, col);
                         sendMove(selectedRow, selectedCol, row, col, sock);
-                        redTurn = false;
+                       i // redTurn = false;
                     }
                     selectedRow = -1;
                 }

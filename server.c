@@ -232,7 +232,7 @@ int main() {
                     if (isValidMove(selectedRow, selectedCol, row, col, false)) {
                         makeMove(selectedRow, selectedCol, row, col);
                         sendMove(selectedRow, selectedCol, row, col, client_socket);
-                        redTurn = true;
+                        // redTurn = true;
                     }
                     selectedRow = -1;
                 }
